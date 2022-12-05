@@ -95,7 +95,6 @@ func (promWatcher *PrometheusWatcher) PromQuery(query string) (float64, error) {
 	case model.Matrix:
 		if len(r) > 0 && len(r[len(r)-1].Values) > 0 {
 			value, _ := strconv.ParseFloat(r[len(r)-1].Values[len(r[len(r)-1].Values)-1].Value.String(), 64)
-			log.Printf("%v", value)
 			return value, nil
 		}
 	default:
@@ -103,5 +102,5 @@ func (promWatcher *PrometheusWatcher) PromQuery(query string) (float64, error) {
 		return -1, errors.New("Can't handle Prometheus result type " + r.Type().String())
 	}
 
-	return -1, errors.New("Something strange happend!")
+	return -1, errors.New("something strange happend")
 }

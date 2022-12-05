@@ -3,7 +3,6 @@ package smartie
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"smarties/internal/promwatch"
 	"strconv"
@@ -15,62 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type ShellyStatus struct {
-	ID      int     `json:"id"`
-	Source  string  `json:"source"`
-	Output  bool    `json:"output"`
-	Apower  float64 `json:"apower"`
-	Voltage float64 `json:"voltage"`
-	Current float64 `json:"current"`
-	Aenergy struct {
-		Total    float64   `json:"total"`
-		ByMinute []float64 `json:"by_minute"`
-		MinuteTs int       `json:"minute_ts"`
-	} `json:"aenergy"`
-	Temperature struct {
-		TC float64 `json:"tC"`
-		TF float64 `json:"tF"`
-	} `json:"temperature"`
-}
-
 type NatsInterface interface {
 	Publish(subj string, data []byte) error
-}
-
-type TasmotaStatus struct {
-	Time string `json:"Time"`
-	SML  struct {
-		VerbrauchT1      float64 `json:"Verbrauch_T1"`
-		VerbrauchT2      float64 `json:"Verbrauch_T2"`
-		VerbrauchSumme   float64 `json:"Verbrauch_Summe"`
-		EinspeisungSumme float64 `json:"Einspeisung_Summe"`
-		WattL1           float64 `json:"Watt_L1"`
-		WattL2           float64 `json:"Watt_L2"`
-		WattL3           float64 `json:"Watt_L3"`
-		WattSumme        float64 `json:"Watt_Summe"`
-		VoltL1           float64 `json:"Volt_L1"`
-		VoltL2           float64 `json:"Volt_L2"`
-		VoltL3           float64 `json:"Volt_L3"`
-	} `json:"SML"`
-}
-
-type DeviceInfo struct {
-	mqqtSubject          string
-	promActivePowerGauge prometheus.Gauge
-	promEnabledGauge     prometheus.Gauge
-	currentPower         float64
-	enabled              bool
-	pluggedDevice        BatteryPoweredDevice
-	priority             float32
-	actionCounter        int
-	actionTimestamp      time.Time
-}
-
-type BatteryPoweredDevice struct {
-	Nodename     string
-	BatteryPower float64
-	AcPowered    bool
-	IsLaptop     bool
+	Request(subj string, data []byte, timeout time.Duration) (*nats.Msg, error)
 }
 
 var natsConn *nats.Conn
@@ -87,7 +33,7 @@ func Operate() {
 
 	go func() {
 		for {
-			pullBatteryPoweredDevices()
+			maintainBatteryPoweredDevices()
 			time.Sleep(time.Second * 10)
 		}
 	}()
@@ -132,10 +78,12 @@ func Operate() {
 					ConstLabels: prometheus.Labels{"device": deviceID},
 				}),
 				pluggedDevice: BatteryPoweredDevice{
-					Nodename:     getNodename(deviceID),
-					BatteryPower: 0,
-					AcPowered:    false,
-					IsLaptop:     strings.HasPrefix(deviceID, "shellies.plug.laptop"),
+					Nodename:           getNodename(deviceID),
+					BatteryLevel:       0,
+					UpperMaintainLevel: 80,
+					LowerMaintainLevel: 20,
+					AcPowered:          false,
+					IsLaptop:           strings.HasPrefix(deviceID, "shellies.plug.laptop"),
 				},
 				actionCounter: 1,
 			}
@@ -150,6 +98,7 @@ func Operate() {
 		if strings.HasSuffix(m.Subject, "power") {
 			deviceInfo.promActivePowerGauge.Set(currentPower)
 			deviceInfo.currentPower = currentPower
+			deviceInfo.pluggedDevice.updatePowerConsumption(currentPower)
 		} else if strings.HasSuffix(m.Subject, "relay.0") {
 			deviceInfo.enabled = string(m.Data) == "on"
 			if deviceInfo.enabled {
@@ -186,12 +135,14 @@ func balance(overalWatt float64) error {
 
 		if err == nil {
 			log.Printf("Turning OFF %s #%d", possibleDevice.mqqtSubject, possibleDevice.actionCounter)
-			err = setPlugStatus(possibleDevice, "off", natsConn)
+			err = possibleDevice.setPlugStatus("off", natsConn)
 			if err != nil {
+				log.Print(err)
 				return err
 			}
 			return nil
 		} else {
+			log.Print(err)
 			return err
 		}
 
@@ -201,71 +152,13 @@ func balance(overalWatt float64) error {
 		possibleDevice, err := getPowerOnCandidate(overalWatt)
 
 		if err == nil {
-
 			log.Printf("Turning ON %s", possibleDevice.mqqtSubject)
-			setPlugStatus(possibleDevice, "on", natsConn)
+			possibleDevice.setPlugStatus("on", natsConn)
 			return nil
 		} else {
+			log.Print(err)
 			return err
 		}
-	}
-}
-
-func setPlugStatus(deviceInfo *DeviceInfo, status string, natsConn NatsInterface) error {
-
-	if (deviceInfo.enabled && status == "on") || (!deviceInfo.enabled && status == "off") {
-		return nil
-	}
-
-	if deviceInfo.actionCounter > 1 && status == "off" {
-		if deviceInfo.actionTimestamp.Add(time.Minute * 10).After(time.Now()) {
-			log.Printf("Ignoring new plug status %s for device %s", status, deviceInfo.mqqtSubject)
-			return fmt.Errorf("ignored! turning off device %s is blocked until %s", deviceInfo.mqqtSubject,
-				deviceInfo.actionTimestamp.Add(time.Minute*10).Format("15:04:05"))
-		}
-	}
-
-	if status == "on" || status == "off" {
-		natsConn.Publish(deviceInfo.mqqtSubject+".relay.0.command", []byte(status))
-	} else {
-		return errors.New("Unknow plug status " + status)
-	}
-
-	if status == "on" {
-		deviceInfo.actionCounter++
-		deviceInfo.actionTimestamp = time.Now()
-	}
-
-	return nil
-}
-
-func pullBatteryPoweredDevices() {
-	for deviceId, deviceInfo := range deviceMap {
-		log.Printf("PlugID %s", deviceId)
-
-		query := fmt.Sprintf(`node_power_supply_current_capacity * on(instance) group_left(nodename) node_uname_info{nodename="%s"}`, getNodename(deviceId))
-		queryResult, err := promWatcher.PromQuery(query)
-
-		if err == nil {
-			deviceInfo.pluggedDevice.BatteryPower = queryResult
-
-			if queryResult <= 20 {
-				setPlugStatus(deviceInfo, "on", natsConn)
-			}
-		}
-
-		query = fmt.Sprintf(`node_power_supply_power_source_state{state=~"AC Power"} * on(instance) group_left(nodename) node_uname_info{nodename="%s"}`, getNodename(deviceId))
-		queryResult, err = promWatcher.PromQuery(query)
-
-		if err == nil {
-			if queryResult == 1 {
-				deviceInfo.pluggedDevice.AcPowered = true
-			} else {
-				deviceInfo.pluggedDevice.AcPowered = false
-			}
-
-		}
-
 	}
 }
 
@@ -279,12 +172,12 @@ func getPowerOffCandidate(overallWatt float64) (*DeviceInfo, error) {
 	var priority float32 = -1
 
 	for _, deviceInfo := range deviceMap {
-		log.Printf("PlugID %v", deviceInfo)
+		log.Printf("PlugID %s", deviceInfo.mqqtSubject)
 
-		if deviceInfo.enabled {
+		if deviceInfo.enabled && deviceInfo.pluggedDevice.BatteryLevel > deviceInfo.pluggedDevice.MaintainLevel {
 			calcPrio := float32(deviceInfo.priority) / float32(deviceInfo.actionCounter)
 			if deviceInfo.pluggedDevice.IsLaptop {
-				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryPower) / 100)
+				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryLevel) / 100)
 			}
 			if priority == -1 || calcPrio < float32(priority) {
 				priority = calcPrio
@@ -295,7 +188,7 @@ func getPowerOffCandidate(overallWatt float64) (*DeviceInfo, error) {
 	}
 
 	if device == nil {
-		return nil, errors.New("No candidate found!")
+		return nil, errors.New("no candidate found")
 	}
 
 	return device, nil
@@ -310,7 +203,7 @@ func getPowerOnCandidate(overallWatt float64) (*DeviceInfo, error) {
 		if !deviceInfo.enabled {
 			calcPrio := float32(deviceInfo.priority) / float32(deviceInfo.actionCounter)
 			if deviceInfo.pluggedDevice.IsLaptop {
-				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryPower) / 100)
+				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryLevel) / 100)
 			}
 			if calcPrio > float32(priority) {
 				priority = calcPrio
@@ -326,11 +219,3 @@ func getPowerOnCandidate(overallWatt float64) (*DeviceInfo, error) {
 
 	return device, nil
 }
-
-/**
-
-
-
-
-
-**/

@@ -1,8 +1,16 @@
 env GOOS=linux GOARCH=arm64 go build -o smartie
 
 Überschuss (Aktion immer nur alle 1min)
+
+Lauf 1
+- Suche Laptop mit geringster Battery Kapa
+- Battery Maintain 80%
+- Plug on 
+
+Lauf 2
 - Suche alle Plugs die aus sind.
 - Sortierung nach Prio
+  - 
 - erstes Plug einschalten
 - return
 
@@ -14,6 +22,8 @@ Bezug (Aktion immer nur alle 1min)
 - return
 
 Laptop leer (20%)
+- Battery maintain 20%
+- Plug on
 
 
 Prio
@@ -36,5 +46,18 @@ shellies.plug.*.*.relay.>
 
 tele.*.SENSOR
 
-smartie.laptop.air
+smartie.laptop.air.charge
 smartie.laptop.NB-
+
+
+
+Install
+
+
+
+brew tap insidegreen/smartie
+brew install smartie
+brew install battery
+brew services start smartie 
+
+open battery.app

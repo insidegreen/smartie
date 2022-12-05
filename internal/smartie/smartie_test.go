@@ -4,7 +4,25 @@ import (
 	"log"
 	"testing"
 	"time"
+
+	"github.com/nats-io/nats.go"
 )
+
+type NatsMock struct {
+	t      *testing.T
+	device *DeviceInfo
+}
+
+func (nm *NatsMock) Publish(subj string, data []byte) error {
+	nm.device.enabled = "on" == string(data)
+	return nil
+}
+
+func (nm *NatsMock) Request(subj string, data []byte, timeout time.Duration) (*nats.Msg, error) {
+	return &nats.Msg{
+		Data: []byte("ok"),
+	}, nil
+}
 
 var device1 *DeviceInfo = &DeviceInfo{
 	mqqtSubject:   "device1",
@@ -14,7 +32,7 @@ var device1 *DeviceInfo = &DeviceInfo{
 	actionCounter: 1,
 	pluggedDevice: BatteryPoweredDevice{
 		Nodename:     "device1laptop",
-		BatteryPower: 21,
+		BatteryLevel: 21,
 		AcPowered:    false,
 		IsLaptop:     true,
 	},
@@ -28,7 +46,7 @@ var device2 *DeviceInfo = &DeviceInfo{
 	actionCounter: 1,
 	pluggedDevice: BatteryPoweredDevice{
 		Nodename:     "device2laptop",
-		BatteryPower: 20,
+		BatteryLevel: 20,
 		AcPowered:    false,
 		IsLaptop:     true,
 	},
@@ -103,52 +121,5 @@ func TestPowerOnOneEnabledPlugs(t *testing.T) {
 
 	if candidate != device1 {
 		t.Errorf("expected device1 ... got %v", candidate)
-	}
-}
-
-type NatsMock struct {
-	t      *testing.T
-	device *DeviceInfo
-}
-
-func (nm *NatsMock) Publish(subj string, data []byte) error {
-	nm.device.enabled = "on" == string(data)
-	return nil
-}
-
-func TestPowerSwitch(t *testing.T) {
-	deviceMap["device1"] = device1
-	deviceMap["device2"] = device2
-
-	device1.enabled = false
-	device1.pluggedDevice.AcPowered = false
-
-	setPlugStatus(device1, "on", &NatsMock{t: t, device: device1})
-	actionTime := device1.actionTimestamp
-	setPlugStatus(device1, "on", &NatsMock{t: t, device: device1})
-
-	if actionTime != device1.actionTimestamp {
-		t.Errorf("actionTimestamp has changed")
-	}
-
-	if device1.actionCounter != 2 {
-		t.Errorf("Expected actionCounter == 2  ... got %d", device1.actionCounter)
-	}
-
-	setPlugStatus(device1, "off", &NatsMock{t: t, device: device1})
-	if !device1.enabled {
-		t.Errorf("Expected plug status still to be enabled")
-	}
-
-	device1.actionTimestamp = time.Now().Add(time.Minute * -9)
-	setPlugStatus(device1, "off", &NatsMock{t: t, device: device1})
-	if !device1.enabled {
-		t.Errorf("Expected plug status still to be enabled")
-	}
-
-	device1.actionTimestamp = time.Now().Add(time.Minute * -11)
-	setPlugStatus(device1, "off", &NatsMock{t: t, device: device1})
-	if device1.enabled {
-		t.Errorf("Expected plug status to be disabled")
 	}
 }
