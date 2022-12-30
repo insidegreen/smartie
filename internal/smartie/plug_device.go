@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type DeviceInfo struct {
+type PlugDeviceInfo struct {
 	mqqtSubject          string
 	promActivePowerGauge prometheus.Gauge
 	promEnabledGauge     prometheus.Gauge
@@ -21,7 +21,7 @@ type DeviceInfo struct {
 	actionTimestamp      time.Time
 }
 
-func (deviceInfo *DeviceInfo) setPlugStatus(status string, nats NatsInterface) error {
+func (deviceInfo *PlugDeviceInfo) setPlugStatus(status string, nats NatsInterface) error {
 
 	if (deviceInfo.enabled && status == "on") || (!deviceInfo.enabled && status == "off") {
 		return nil

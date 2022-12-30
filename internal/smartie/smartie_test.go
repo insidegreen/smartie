@@ -10,7 +10,7 @@ import (
 
 type NatsMock struct {
 	t      *testing.T
-	device *DeviceInfo
+	device *PlugDeviceInfo
 }
 
 func (nm *NatsMock) Publish(subj string, data []byte) error {
@@ -24,30 +24,30 @@ func (nm *NatsMock) Request(subj string, data []byte, timeout time.Duration) (*n
 	}, nil
 }
 
-var device1 *DeviceInfo = &DeviceInfo{
+var device1 *PlugDeviceInfo = &PlugDeviceInfo{
 	mqqtSubject:   "device1",
 	currentPower:  100,
 	enabled:       false,
 	priority:      1,
 	actionCounter: 1,
 	pluggedDevice: BatteryPoweredDevice{
-		Nodename:     "device1laptop",
+		NodeName:     "device1laptop",
 		BatteryLevel: 21,
-		AcPowered:    false,
+		IsAcPowered:  false,
 		IsLaptop:     true,
 	},
 }
 
-var device2 *DeviceInfo = &DeviceInfo{
+var device2 *PlugDeviceInfo = &PlugDeviceInfo{
 	mqqtSubject:   "device2",
 	currentPower:  100,
 	enabled:       false,
 	priority:      1,
 	actionCounter: 1,
 	pluggedDevice: BatteryPoweredDevice{
-		Nodename:     "device2laptop",
+		NodeName:     "device2laptop",
 		BatteryLevel: 20,
-		AcPowered:    false,
+		IsAcPowered:  false,
 		IsLaptop:     true,
 	},
 }
@@ -71,7 +71,7 @@ func TestPowerOffOneEnabledPlug(t *testing.T) {
 	deviceMap["device2"] = device2
 
 	device1.enabled = true
-	device1.pluggedDevice.AcPowered = true
+	device1.pluggedDevice.IsAcPowered = true
 	candidate, _ := getPowerOffCandidate(200)
 
 	if candidate != device1 {
@@ -84,9 +84,9 @@ func TestPowerOffTwoEnabledPlugs(t *testing.T) {
 	deviceMap["device2"] = device2
 
 	device1.enabled = true
-	device1.pluggedDevice.AcPowered = true
+	device1.pluggedDevice.IsAcPowered = true
 	device2.enabled = true
-	device2.pluggedDevice.AcPowered = true
+	device2.pluggedDevice.IsAcPowered = true
 	candidate, _ := getPowerOffCandidate(200)
 
 	if candidate != device1 {
@@ -99,9 +99,9 @@ func TestPowerOnNoEnabledPlugs(t *testing.T) {
 	deviceMap["device2"] = device2
 
 	device1.enabled = false
-	device1.pluggedDevice.AcPowered = false
+	device1.pluggedDevice.IsAcPowered = false
 	device2.enabled = false
-	device2.pluggedDevice.AcPowered = false
+	device2.pluggedDevice.IsAcPowered = false
 	candidate, _ := getPowerOnCandidate(200)
 
 	if candidate != device2 {
@@ -114,9 +114,9 @@ func TestPowerOnOneEnabledPlugs(t *testing.T) {
 	deviceMap["device2"] = device2
 
 	device1.enabled = false
-	device1.pluggedDevice.AcPowered = false
+	device1.pluggedDevice.IsAcPowered = false
 	device2.enabled = true
-	device2.pluggedDevice.AcPowered = true
+	device2.pluggedDevice.IsAcPowered = true
 	candidate, _ := getPowerOnCandidate(200)
 
 	if candidate != device1 {

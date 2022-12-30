@@ -7,15 +7,15 @@ import (
 )
 
 type BatteryPoweredDevice struct {
-	Nodename           string
-	BatteryLevel       int
-	AcPowered          bool
-	IsLaptop           bool
-	MaintainLevel      int
-	LowerMaintainLevel int
-	UpperMaintainLevel int
-	ChargePower        float64
-	MaintainPower      float64
+	NodeName           string `json:"nodeName"`
+	BatteryLevel       int    `json:"batteryLevel"`
+	IsAcPowered        bool   `json:"isAcPowered"`
+	IsCharging         bool   `json:"isCharging"`
+	IsLaptop           bool   `json:"isLaptop"`
+	MaintainLevel      int    `json:"maintainLevel"`
+	MinMaintainLevel   int    `json:"minMaintainLevel"`
+	MaxMaintainLevel   int    `json:"maxMaintainLevel"`
+	SmartChargeEnabled bool   `json:"smartChargeEnabled"`
 }
 
 func maintainBatteryPoweredDevices() {
@@ -29,9 +29,9 @@ func maintainBatteryPoweredDevices() {
 
 		if err == nil {
 			if queryResult == 1 {
-				batteryDevice.AcPowered = true
+				batteryDevice.IsAcPowered = true
 			} else {
-				batteryDevice.AcPowered = false
+				batteryDevice.IsAcPowered = false
 			}
 		}
 
@@ -41,16 +41,29 @@ func maintainBatteryPoweredDevices() {
 		if err == nil {
 			batteryDevice.BatteryLevel = int(queryResult)
 
-			if queryResult <= float64(batteryDevice.LowerMaintainLevel) && !deviceInfo.pluggedDevice.AcPowered {
-				deviceInfo.pluggedDevice.setBatteryMaintainLevel(batteryDevice.LowerMaintainLevel, natsConn)
-				deviceInfo.setPlugStatus("on", natsConn)
+			if queryResult <= float64(batteryDevice.MinMaintainLevel) {
+				deviceInfo.pluggedDevice.setBatteryMaintainLevel(batteryDevice.MinMaintainLevel, natsConn)
+				deviceInfo.pluggedDevice.setBatteryChargeStatus("on", natsConn)
+				if !deviceInfo.pluggedDevice.IsAcPowered {
+					deviceInfo.setPlugStatus("on", natsConn)
+				}
 			}
 		}
 	}
 }
 
+func (device *BatteryPoweredDevice) setBatteryChargeStatus(status string, nats NatsInterface) {
+	msg, err := nats.Request("smartie.laptop."+device.NodeName+".charge", []byte(status), time.Second*5)
+
+	if err == nil && string(msg.Data) == "ok" {
+		device.IsCharging = status == "on"
+	} else {
+		log.Println(err)
+	}
+}
+
 func (device *BatteryPoweredDevice) setBatteryMaintainLevel(level int, nats NatsInterface) {
-	msg, err := nats.Request("smartie.laptop."+device.Nodename+".charge", []byte(fmt.Sprint(level)), time.Second*5)
+	msg, err := nats.Request("smartie.laptop."+device.NodeName+".maintain", []byte(fmt.Sprint(level)), time.Second*5)
 
 	if err == nil && string(msg.Data) == "ok" {
 		device.MaintainLevel = level
@@ -61,13 +74,13 @@ func (device *BatteryPoweredDevice) setBatteryMaintainLevel(level int, nats Nats
 
 func (device *BatteryPoweredDevice) updatePowerConsumption(currentPower float64) {
 
-	if device.AcPowered {
-		if device.BatteryLevel < device.MaintainLevel && device.ChargePower < currentPower {
-			device.ChargePower = currentPower
-		}
-		if device.BatteryLevel >= device.MaintainLevel && device.MaintainPower < currentPower {
-			device.MaintainPower = currentPower
-		}
-	}
+	// if device.IsAcPowered {
+	// 	if device.BatteryLevel < device.MaintainLevel && device.ChargePower < currentPower {
+	// 		device.ChargePower = currentPower
+	// 	}
+	// 	if device.BatteryLevel >= device.MaintainLevel && device.MaintainPower < currentPower {
+	// 		device.MaintainPower = currentPower
+	// 	}
+	// }
 
 }

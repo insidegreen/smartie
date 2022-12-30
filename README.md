@@ -1,5 +1,13 @@
 env GOOS=linux GOARCH=arm64 go build -o smartie
 
+MAC
+
+pmset – manipulate power management settings
+smc - Apple System Management Control (SMC)cd 
+
+https://github.com/hholtmann/smcFanControl/tree/master/smc-command
+
+
 Überschuss (Aktion immer nur alle 1min)
 
 Lauf 1

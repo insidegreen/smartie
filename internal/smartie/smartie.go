@@ -20,7 +20,7 @@ type NatsInterface interface {
 }
 
 var natsConn *nats.Conn
-var deviceMap map[string]*DeviceInfo = make(map[string]*DeviceInfo)
+var deviceMap map[string]*PlugDeviceInfo = make(map[string]*PlugDeviceInfo)
 var promWatcher promwatch.PrometheusWatcher
 
 func Operate() {
@@ -63,11 +63,11 @@ func Operate() {
 
 		deviceID := m.Subject[:strings.Index(m.Subject, ".relay")]
 		currentPower, _ := strconv.ParseFloat(string(m.Data), 64)
-		var deviceInfo *DeviceInfo
+		var deviceInfo *PlugDeviceInfo
 		var deviceExists bool
 
 		if deviceInfo, deviceExists = deviceMap[deviceID]; !deviceExists {
-			deviceInfo = &DeviceInfo{
+			deviceInfo = &PlugDeviceInfo{
 				mqqtSubject: deviceID,
 				promActivePowerGauge: promauto.NewGauge(prometheus.GaugeOpts{
 					Name:        "smartie_active_power_watts",
@@ -78,12 +78,12 @@ func Operate() {
 					ConstLabels: prometheus.Labels{"device": deviceID},
 				}),
 				pluggedDevice: BatteryPoweredDevice{
-					Nodename:           getNodename(deviceID),
-					BatteryLevel:       0,
-					UpperMaintainLevel: 80,
-					LowerMaintainLevel: 20,
-					AcPowered:          false,
-					IsLaptop:           strings.HasPrefix(deviceID, "shellies.plug.laptop"),
+					NodeName:         getNodename(deviceID),
+					BatteryLevel:     0,
+					MaxMaintainLevel: 80,
+					MinMaintainLevel: 20,
+					IsAcPowered:      false,
+					IsLaptop:         strings.HasPrefix(deviceID, "shellies.plug.laptop"),
 				},
 				actionCounter: 1,
 			}
@@ -167,8 +167,8 @@ func getNodename(plugDeviceID string) string {
 	return nodenameSlice[len(nodenameSlice)-1]
 }
 
-func getPowerOffCandidate(overallWatt float64) (*DeviceInfo, error) {
-	var device *DeviceInfo
+func getPowerOffCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
+	var device *PlugDeviceInfo
 	var priority float32 = -1
 
 	for _, deviceInfo := range deviceMap {
@@ -194,8 +194,8 @@ func getPowerOffCandidate(overallWatt float64) (*DeviceInfo, error) {
 	return device, nil
 }
 
-func getPowerOnCandidate(overallWatt float64) (*DeviceInfo, error) {
-	var device *DeviceInfo
+func getPowerOnCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
+	var device *PlugDeviceInfo
 	var priority float32 = 0.0
 
 	for _, deviceInfo := range deviceMap {

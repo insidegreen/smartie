@@ -10,7 +10,7 @@ func TestPowerSwitch(t *testing.T) {
 	deviceMap["device2"] = device2
 
 	device1.enabled = false
-	device1.pluggedDevice.AcPowered = false
+	device1.pluggedDevice.IsAcPowered = false
 
 	device1.setPlugStatus("on", &NatsMock{t: t, device: device1})
 	actionTime := device1.actionTimestamp
