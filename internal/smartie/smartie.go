@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"smarties/internal/promwatch"
-	"strconv"
-	"strings"
+	"math"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -20,24 +18,19 @@ type NatsInterface interface {
 }
 
 var natsConn *nats.Conn
-var deviceMap map[string]*PlugDeviceInfo = make(map[string]*PlugDeviceInfo)
-var promWatcher promwatch.PrometheusWatcher
+var devicePlugedEvent chan *PlugDeviceInfo
+var laptopAcEvent chan *BatteryPoweredDevice
 
 func Operate() {
+
+	devicePlugedEvent = make(chan *PlugDeviceInfo)
+	laptopAcEvent = make(chan *BatteryPoweredDevice)
+
 	nc, err := nats.Connect("192.168.86.33")
-	promWatcher = promwatch.New("http://192.168.178.22:9090")
 
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	go func() {
-		for {
-			maintainBatteryPoweredDevices()
-			time.Sleep(time.Second * 10)
-		}
-	}()
-
 	natsConn = nc
 
 	apower := promauto.NewGauge(prometheus.GaugeOpts{
@@ -50,64 +43,14 @@ func Operate() {
 		ConstLabels: prometheus.Labels{"device": "tasmota"},
 	})
 
+	nc.Subscribe("smartie.laptop.*.status", updateBatteryPoweredDevice)
+	nc.Subscribe("shellies.plug.*.*.relay.>", updatePlugDevice)
+
 	nc.Subscribe("shellies.pv.status.switch:0", func(m *nats.Msg) {
 		var statusMsg ShellyStatus
 		json.Unmarshal(m.Data, &statusMsg)
 
 		apower.Set(statusMsg.Apower)
-	})
-
-	nc.Subscribe("shellies.plug.*.*.relay.>", func(m *nats.Msg) {
-		var statusMsg ShellyStatus
-		json.Unmarshal(m.Data, &statusMsg)
-
-		deviceID := m.Subject[:strings.Index(m.Subject, ".relay")]
-		currentPower, _ := strconv.ParseFloat(string(m.Data), 64)
-		var deviceInfo *PlugDeviceInfo
-		var deviceExists bool
-
-		if deviceInfo, deviceExists = deviceMap[deviceID]; !deviceExists {
-			deviceInfo = &PlugDeviceInfo{
-				mqqtSubject: deviceID,
-				promActivePowerGauge: promauto.NewGauge(prometheus.GaugeOpts{
-					Name:        "smartie_active_power_watts",
-					ConstLabels: prometheus.Labels{"device": deviceID},
-				}),
-				promEnabledGauge: promauto.NewGauge(prometheus.GaugeOpts{
-					Name:        "smartie_enabled_status",
-					ConstLabels: prometheus.Labels{"device": deviceID},
-				}),
-				pluggedDevice: BatteryPoweredDevice{
-					NodeName:         getNodename(deviceID),
-					BatteryLevel:     0,
-					MaxMaintainLevel: 80,
-					MinMaintainLevel: 20,
-					IsAcPowered:      false,
-					IsLaptop:         strings.HasPrefix(deviceID, "shellies.plug.laptop"),
-				},
-				actionCounter: 1,
-			}
-			deviceMap[deviceID] = deviceInfo
-			if deviceInfo.pluggedDevice.IsLaptop {
-				deviceInfo.priority = 1
-			} else {
-				deviceInfo.priority = 0.7
-			}
-		}
-
-		if strings.HasSuffix(m.Subject, "power") {
-			deviceInfo.promActivePowerGauge.Set(currentPower)
-			deviceInfo.currentPower = currentPower
-			deviceInfo.pluggedDevice.updatePowerConsumption(currentPower)
-		} else if strings.HasSuffix(m.Subject, "relay.0") {
-			deviceInfo.enabled = string(m.Data) == "on"
-			if deviceInfo.enabled {
-				deviceInfo.promEnabledGauge.Set(1)
-			} else {
-				deviceInfo.promEnabledGauge.Set(0)
-			}
-		}
-
 	})
 
 	nc.Subscribe("tele.*.SENSOR", func(m *nats.Msg) {
@@ -122,6 +65,36 @@ func Operate() {
 
 	if err := nc.LastError(); err != nil {
 		log.Fatal(err)
+	}
+
+	var lastPlugedEvent int64
+	var lastLaptopAcEvent int64
+	var lastPlug *PlugDeviceInfo
+	var lastLaptop *BatteryPoweredDevice
+
+	for {
+		select {
+		case plug := <-devicePlugedEvent:
+			lastPlugedEvent = time.Now().UnixMilli()
+			lastPlug = plug
+			log.Println("Plug Event")
+		case laptop := <-laptopAcEvent:
+			lastLaptopAcEvent = time.Now().UnixMilli()
+			lastLaptop = laptop
+			log.Println("Laptop Event")
+		}
+
+		if math.Abs(float64(lastPlugedEvent-lastLaptopAcEvent)) <= 1000*20 {
+			lastPlug.pluggedDevice = lastLaptop
+			log.Printf("%s plugged into %s", lastLaptop.NodeName, lastPlug.mqqtSubject)
+
+			lastPlugedEvent = -1
+			lastLaptopAcEvent = -1
+			lastPlug = nil
+			lastLaptop = nil
+		} else if lastPlug != nil {
+			// lastPlug.pluggedDevice = nil
+		}
 	}
 
 }
@@ -162,19 +135,14 @@ func balance(overalWatt float64) error {
 	}
 }
 
-func getNodename(plugDeviceID string) string {
-	nodenameSlice := strings.SplitAfter(plugDeviceID, ".")
-	return nodenameSlice[len(nodenameSlice)-1]
-}
-
 func getPowerOffCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
 	var device *PlugDeviceInfo
 	var priority float32 = -1
 
-	for _, deviceInfo := range deviceMap {
+	for _, deviceInfo := range plugDeviceMap {
 		log.Printf("PlugID %s", deviceInfo.mqqtSubject)
 
-		if deviceInfo.enabled && deviceInfo.pluggedDevice.BatteryLevel > deviceInfo.pluggedDevice.MaintainLevel {
+		if deviceInfo.pluggedDevice != nil && deviceInfo.enabled && deviceInfo.pluggedDevice.BatteryLevel > deviceInfo.pluggedDevice.MaintainLevel {
 			calcPrio := float32(deviceInfo.priority) / float32(deviceInfo.actionCounter)
 			if deviceInfo.pluggedDevice.IsLaptop {
 				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryLevel) / 100)
@@ -198,11 +166,11 @@ func getPowerOnCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
 	var device *PlugDeviceInfo
 	var priority float32 = 0.0
 
-	for _, deviceInfo := range deviceMap {
+	for _, deviceInfo := range plugDeviceMap {
 
 		if !deviceInfo.enabled {
 			calcPrio := float32(deviceInfo.priority) / float32(deviceInfo.actionCounter)
-			if deviceInfo.pluggedDevice.IsLaptop {
+			if deviceInfo.pluggedDevice != nil && deviceInfo.pluggedDevice.IsLaptop {
 				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryLevel) / 100)
 			}
 			if calcPrio > float32(priority) {

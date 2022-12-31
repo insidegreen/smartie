@@ -1,9 +1,12 @@
 package smartie
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/nats-io/nats.go"
 )
 
 type BatteryPoweredDevice struct {
@@ -18,38 +21,35 @@ type BatteryPoweredDevice struct {
 	SmartChargeEnabled bool   `json:"smartChargeEnabled"`
 }
 
-func maintainBatteryPoweredDevices() {
-	for deviceId, deviceInfo := range deviceMap {
-		log.Printf("PlugID %s", deviceId)
+var battDeviceMap map[string]*BatteryPoweredDevice = make(map[string]*BatteryPoweredDevice)
 
-		batteryDevice := &deviceInfo.pluggedDevice
+func updateBatteryPoweredDevice(m *nats.Msg) {
 
-		query := fmt.Sprintf(`node_power_supply_power_source_state{state=~"AC Power"} * on(instance) group_left(nodename) node_uname_info{nodename="%s"}`, getNodename(deviceId))
-		queryResult, err := promWatcher.PromQuery(query)
+	bpd := &BatteryPoweredDevice{}
+	json.Unmarshal(m.Data, bpd)
 
-		if err == nil {
-			if queryResult == 1 {
-				batteryDevice.IsAcPowered = true
-			} else {
-				batteryDevice.IsAcPowered = false
-			}
-		}
+	currentBpd, exists := battDeviceMap[bpd.NodeName]
 
-		query = fmt.Sprintf(`node_power_supply_current_capacity * on(instance) group_left(nodename) node_uname_info{nodename="%s"}`, getNodename(deviceId))
-		queryResult, err = promWatcher.PromQuery(query)
+	if !exists {
+		currentBpd = bpd
+		battDeviceMap[bpd.NodeName] = currentBpd
+	}
 
-		if err == nil {
-			batteryDevice.BatteryLevel = int(queryResult)
+	acSwitch := bpd.IsAcPowered != currentBpd.IsAcPowered
 
-			if queryResult <= float64(batteryDevice.MinMaintainLevel) {
-				deviceInfo.pluggedDevice.setBatteryMaintainLevel(batteryDevice.MinMaintainLevel, natsConn)
-				deviceInfo.pluggedDevice.setBatteryChargeStatus("on", natsConn)
-				if !deviceInfo.pluggedDevice.IsAcPowered {
-					deviceInfo.setPlugStatus("on", natsConn)
-				}
-			}
+	battDeviceMap[bpd.NodeName] = currentBpd
+
+	if acSwitch {
+		//Laptop AC Power Change
+		laptopAcEvent <- bpd
+	}
+
+	if currentBpd.IsAcPowered {
+		if currentBpd.BatteryLevel <= currentBpd.MinMaintainLevel {
+			currentBpd.setBatteryChargeStatus("on", natsConn)
 		}
 	}
+	// else find and activate plug
 }
 
 func (device *BatteryPoweredDevice) setBatteryChargeStatus(status string, nats NatsInterface) {
@@ -70,17 +70,4 @@ func (device *BatteryPoweredDevice) setBatteryMaintainLevel(level int, nats Nats
 	} else {
 		log.Println(err)
 	}
-}
-
-func (device *BatteryPoweredDevice) updatePowerConsumption(currentPower float64) {
-
-	// if device.IsAcPowered {
-	// 	if device.BatteryLevel < device.MaintainLevel && device.ChargePower < currentPower {
-	// 		device.ChargePower = currentPower
-	// 	}
-	// 	if device.BatteryLevel >= device.MaintainLevel && device.MaintainPower < currentPower {
-	// 		device.MaintainPower = currentPower
-	// 	}
-	// }
-
 }

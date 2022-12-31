@@ -6,8 +6,8 @@ import (
 )
 
 func TestPowerSwitch(t *testing.T) {
-	deviceMap["device1"] = device1
-	deviceMap["device2"] = device2
+	plugDeviceMap["device1"] = device1
+	plugDeviceMap["device2"] = device2
 
 	device1.enabled = false
 	device1.pluggedDevice.IsAcPowered = false

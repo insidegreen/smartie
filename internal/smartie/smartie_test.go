@@ -30,7 +30,7 @@ var device1 *PlugDeviceInfo = &PlugDeviceInfo{
 	enabled:       false,
 	priority:      1,
 	actionCounter: 1,
-	pluggedDevice: BatteryPoweredDevice{
+	pluggedDevice: &BatteryPoweredDevice{
 		NodeName:     "device1laptop",
 		BatteryLevel: 21,
 		IsAcPowered:  false,
@@ -44,7 +44,7 @@ var device2 *PlugDeviceInfo = &PlugDeviceInfo{
 	enabled:       false,
 	priority:      1,
 	actionCounter: 1,
-	pluggedDevice: BatteryPoweredDevice{
+	pluggedDevice: &BatteryPoweredDevice{
 		NodeName:     "device2laptop",
 		BatteryLevel: 20,
 		IsAcPowered:  false,
@@ -54,8 +54,8 @@ var device2 *PlugDeviceInfo = &PlugDeviceInfo{
 
 func TestPowerOffNoEnabledPlugs(t *testing.T) {
 
-	deviceMap["device1"] = device1
-	deviceMap["device2"] = device2
+	plugDeviceMap["device1"] = device1
+	plugDeviceMap["device2"] = device2
 
 	_, err := getPowerOffCandidate(200)
 
@@ -67,8 +67,8 @@ func TestPowerOffNoEnabledPlugs(t *testing.T) {
 }
 
 func TestPowerOffOneEnabledPlug(t *testing.T) {
-	deviceMap["device1"] = device1
-	deviceMap["device2"] = device2
+	plugDeviceMap["device1"] = device1
+	plugDeviceMap["device2"] = device2
 
 	device1.enabled = true
 	device1.pluggedDevice.IsAcPowered = true
@@ -80,8 +80,8 @@ func TestPowerOffOneEnabledPlug(t *testing.T) {
 }
 
 func TestPowerOffTwoEnabledPlugs(t *testing.T) {
-	deviceMap["device1"] = device1
-	deviceMap["device2"] = device2
+	plugDeviceMap["device1"] = device1
+	plugDeviceMap["device2"] = device2
 
 	device1.enabled = true
 	device1.pluggedDevice.IsAcPowered = true
@@ -95,8 +95,8 @@ func TestPowerOffTwoEnabledPlugs(t *testing.T) {
 }
 
 func TestPowerOnNoEnabledPlugs(t *testing.T) {
-	deviceMap["device1"] = device1
-	deviceMap["device2"] = device2
+	plugDeviceMap["device1"] = device1
+	plugDeviceMap["device2"] = device2
 
 	device1.enabled = false
 	device1.pluggedDevice.IsAcPowered = false
@@ -110,8 +110,8 @@ func TestPowerOnNoEnabledPlugs(t *testing.T) {
 }
 
 func TestPowerOnOneEnabledPlugs(t *testing.T) {
-	deviceMap["device1"] = device1
-	deviceMap["device2"] = device2
+	plugDeviceMap["device1"] = device1
+	plugDeviceMap["device2"] = device2
 
 	device1.enabled = false
 	device1.pluggedDevice.IsAcPowered = false
