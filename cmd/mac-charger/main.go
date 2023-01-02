@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
 	"smarties/internal/charger"
+	"smarties/internal/util"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/sirupsen/logrus"
+	easy "github.com/t-tomalak/logrus-easy-formatter"
 )
 
 var statusUpdater *charger.StatusUpdater
@@ -15,34 +17,33 @@ func init() {
 
 	nc, err := nats.Connect("192.168.86.33")
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 
 	statusUpdater = charger.NewStatusUpdater(nc)
+	hook := util.NewLogger(statusUpdater.DeviceInfo.NodeName, "laptop", nc)
+	logrus.AddHook(hook)
+
+	logrus.SetFormatter(&easy.Formatter{
+		TimestampFormat: "2006-01-02 15:04:05",
+		LogFormat:       "%time% [%lvl%] %node% - %msg%\n",
+	})
+
+	// logrus show line number
+	logrus.SetReportCaller(true)
 
 	charger.Operate(statusUpdater.DeviceInfo, nc)
 }
 
 func main() {
 
-	// logPath := "/Users/tgr/Library/Logs/Homebrew/smartie"
-
-	// f, err := os.OpenFile(logPath+"/smartie.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// defer f.Close()
-
-	// log.SetOutput(f)
-
-	log.Println("This is a log from GOLANG")
-
+	logrus.Println("mac charger is starting")
 	context := context.Background()
 
 	for {
 		select {
 		case <-context.Done():
-			log.Println("Exit")
+			logrus.Info("mac charger is exiting")
 		case <-time.Tick(time.Second * 3):
 			statusUpdater.UpdateStatus()
 		}

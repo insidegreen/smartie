@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/sirupsen/logrus"
 )
 
 type PlugDeviceInfo struct {
@@ -53,11 +53,7 @@ func updatePlugDevice(m *nats.Msg) {
 			actionCounter: 1,
 		}
 		plugDeviceMap[deviceID] = deviceInfo
-		if deviceInfo.pluggedDevice != nil && deviceInfo.pluggedDevice.IsLaptop {
-			deviceInfo.priority = 1
-		} else {
-			deviceInfo.priority = 0.7
-		}
+
 	}
 
 	if strings.HasSuffix(m.Subject, "power") {
@@ -89,7 +85,7 @@ func (deviceInfo *PlugDeviceInfo) setPlugStatus(status string, nats NatsInterfac
 
 	if deviceInfo.actionCounter > 1 && status == "off" {
 		if deviceInfo.actionTimestamp.Add(time.Minute * 10).After(time.Now()) {
-			log.Printf("Ignoring new plug status %s for device %s", status, deviceInfo.mqqtSubject)
+			logrus.Infof("Ignoring new plug status %s for device %s", status, deviceInfo.mqqtSubject)
 			return fmt.Errorf("ignored! turning off device %s is blocked until %s", deviceInfo.mqqtSubject,
 				deviceInfo.actionTimestamp.Add(time.Minute*10).Format("15:04:05"))
 		}

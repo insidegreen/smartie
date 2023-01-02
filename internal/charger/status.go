@@ -3,10 +3,10 @@ package charger
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"smarties/internal/smartie"
+	"smarties/internal/util"
 	"strings"
 
 	"github.com/nats-io/nats.go"
@@ -25,7 +25,7 @@ func NewStatusUpdater(natsConn *nats.Conn) *StatusUpdater {
 	hostname, _, _ = strings.Cut(hostname, ".")
 
 	if err != nil {
-		log.Fatal(err)
+		util.Fatal(err)
 	}
 
 	return &StatusUpdater{
@@ -48,7 +48,7 @@ func (su *StatusUpdater) UpdateStatus() {
 
 	metrics, err := parseMetrics()
 
-	smartie.Fatal(err)
+	util.Fatal(err)
 
 	su.DeviceInfo.IsAcPowered = toBool(getValue(metrics["node_power_supply_power_source_state"], "state", "AC Power"))
 	su.DeviceInfo.BatteryLevel = int(getValue(metrics["node_power_supply_current_capacity"]))
@@ -56,7 +56,7 @@ func (su *StatusUpdater) UpdateStatus() {
 
 	payload, err := json.Marshal(su.DeviceInfo)
 
-	smartie.Fatal(err)
+	util.Fatal(err)
 
 	subject := fmt.Sprintf("smartie.laptop.%s.status", su.DeviceInfo.NodeName)
 

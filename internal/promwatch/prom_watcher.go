@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"smarties/internal/util"
 	"strconv"
 	"time"
 
@@ -28,9 +29,7 @@ func New(prometheusAddress string) PrometheusWatcher {
 		Address: prometheusAddress,
 	})
 
-	if err != nil {
-		log.Fatal("Could not initialize prom client!", err)
-	}
+	util.Fatal(err)
 
 	pw.client = client
 

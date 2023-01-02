@@ -3,10 +3,10 @@ package smartie
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/sirupsen/logrus"
 )
 
 type BatteryPoweredDevice struct {
@@ -38,6 +38,7 @@ func updateBatteryPoweredDevice(m *nats.Msg) {
 	acSwitch := bpd.IsAcPowered != currentBpd.IsAcPowered
 
 	battDeviceMap[bpd.NodeName] = currentBpd
+	currentBpd.IsLaptop = true
 
 	if acSwitch {
 		//Laptop AC Power Change
@@ -53,21 +54,27 @@ func updateBatteryPoweredDevice(m *nats.Msg) {
 }
 
 func (device *BatteryPoweredDevice) setBatteryChargeStatus(status string, nats NatsInterface) {
-	msg, err := nats.Request("smartie.laptop."+device.NodeName+".charge", []byte(status), time.Second*5)
+	subject := fmt.Sprintf("smartie.laptop.%s.charge", device.NodeName)
+	msg, err := nats.Request(subject, []byte(status), time.Second*5)
 
 	if err == nil && string(msg.Data) == "ok" {
 		device.IsCharging = status == "on"
-	} else {
-		log.Println(err)
+	} else if err != nil {
+		logrus.Errorf("Could not get a response on subject %s - %s", subject, err.Error())
+	} else if string(msg.Data) != "ok" {
+		logrus.Errorf("Could not get a posititve response on subject %s:  %s", subject, string(msg.Data))
 	}
 }
 
 func (device *BatteryPoweredDevice) setBatteryMaintainLevel(level int, nats NatsInterface) {
-	msg, err := nats.Request("smartie.laptop."+device.NodeName+".maintain", []byte(fmt.Sprint(level)), time.Second*5)
+	subject := fmt.Sprintf("smartie.laptop.%s.maintain", device.NodeName)
+	msg, err := nats.Request(subject, []byte(fmt.Sprint(level)), time.Second*5)
 
 	if err == nil && string(msg.Data) == "ok" {
 		device.MaintainLevel = level
-	} else {
-		log.Println(err)
+	} else if err != nil {
+		logrus.Errorf("Could not get a response on subject %s - %s", subject, err.Error())
+	} else if string(msg.Data) != "ok" {
+		logrus.Errorf("Could not get a posititve response on subject %s:  %s", subject, string(msg.Data))
 	}
 }

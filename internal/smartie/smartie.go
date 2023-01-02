@@ -3,13 +3,14 @@ package smartie
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"math"
+	"smarties/internal/util"
 	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/sirupsen/logrus"
 )
 
 type NatsInterface interface {
@@ -20,17 +21,14 @@ type NatsInterface interface {
 var natsConn *nats.Conn
 var devicePlugedEvent chan *PlugDeviceInfo
 var laptopAcEvent chan *BatteryPoweredDevice
+var powerEvent chan float64
 
-func Operate() {
+func Operate(nc *nats.Conn) {
 
 	devicePlugedEvent = make(chan *PlugDeviceInfo)
 	laptopAcEvent = make(chan *BatteryPoweredDevice)
+	powerEvent = make(chan float64)
 
-	nc, err := nats.Connect("192.168.86.33")
-
-	if err != nil {
-		log.Fatal(err)
-	}
 	natsConn = nc
 
 	apower := promauto.NewGauge(prometheus.GaugeOpts{
@@ -58,15 +56,20 @@ func Operate() {
 		json.Unmarshal(m.Data, &statusMsg)
 
 		tasmotaPower.Set(statusMsg.SML.WattSumme)
-		balance(statusMsg.SML.WattSumme)
+		powerEvent <- statusMsg.SML.WattSumme
 	})
 
 	nc.Flush()
 
 	if err := nc.LastError(); err != nil {
-		log.Fatal(err)
+		util.Fatal(err)
 	}
 
+	go detectPlugLaptopRelation()
+	go balance()
+}
+
+func detectPlugLaptopRelation() {
 	var lastPlugedEvent int64
 	var lastLaptopAcEvent int64
 	var lastPlug *PlugDeviceInfo
@@ -77,62 +80,102 @@ func Operate() {
 		case plug := <-devicePlugedEvent:
 			lastPlugedEvent = time.Now().UnixMilli()
 			lastPlug = plug
-			log.Println("Plug Event")
 		case laptop := <-laptopAcEvent:
 			lastLaptopAcEvent = time.Now().UnixMilli()
 			lastLaptop = laptop
-			log.Println("Laptop Event")
 		}
 
-		if math.Abs(float64(lastPlugedEvent-lastLaptopAcEvent)) <= 1000*20 {
+		if math.Abs(float64(lastPlugedEvent-lastLaptopAcEvent)) <= 1000*10 {
+
+			for _, pdi := range plugDeviceMap {
+				if pdi.pluggedDevice != nil && pdi.pluggedDevice.NodeName == lastLaptop.NodeName {
+					pdi.pluggedDevice = nil
+					pdi.priority = 0.7
+				}
+			}
+
 			lastPlug.pluggedDevice = lastLaptop
-			log.Printf("%s plugged into %s", lastLaptop.NodeName, lastPlug.mqqtSubject)
+			lastPlug.priority = 0.7
+			logrus.Infof("%s plugged into %s", lastLaptop.NodeName, lastPlug.mqqtSubject)
 
 			lastPlugedEvent = -1
 			lastLaptopAcEvent = -1
 			lastPlug = nil
 			lastLaptop = nil
-		} else if lastPlug != nil {
-			// lastPlug.pluggedDevice = nil
 		}
 	}
 
 }
 
-func balance(overalWatt float64) error {
+func balance() {
 
-	if overalWatt > 0 {
-		log.Printf("We're getting power from the grid(%f)\n", overalWatt)
+	for overalWatt := range powerEvent {
 
-		possibleDevice, err := getPowerOffCandidate(overalWatt)
+		if overalWatt > 0 {
+			logrus.Infof("We're getting power from the grid(%f)\n", overalWatt)
 
-		if err == nil {
-			log.Printf("Turning OFF %s #%d", possibleDevice.mqqtSubject, possibleDevice.actionCounter)
-			err = possibleDevice.setPlugStatus("off", natsConn)
-			if err != nil {
-				log.Print(err)
-				return err
+			drainableDevice := getDrainableCandidate()
+
+			if drainableDevice != nil {
+				drainableDevice.setBatteryChargeStatus("off", natsConn)
+				continue
 			}
-			return nil
+
+			possibleDevice, err := getPowerOffCandidate(overalWatt)
+
+			if err == nil {
+				logrus.Infof("Turning OFF %s #%d", possibleDevice.mqqtSubject, possibleDevice.actionCounter)
+				err = possibleDevice.setPlugStatus("off", natsConn)
+				if err != nil {
+					logrus.Error(err)
+				}
+			} else {
+				logrus.Error(err)
+			}
+
 		} else {
-			log.Print(err)
-			return err
-		}
+			logrus.Infof("We're spending power to the grid(%f)\n", overalWatt)
 
-	} else {
-		log.Printf("We're spending power to the grid(%f)\n", overalWatt)
+			chargeableDevice := getChargingCandidate()
+			if chargeableDevice != nil {
+				chargeableDevice.setBatteryChargeStatus("on", natsConn)
+				continue
+			}
+			possibleDevice, err := getPowerOnCandidate(overalWatt)
 
-		possibleDevice, err := getPowerOnCandidate(overalWatt)
-
-		if err == nil {
-			log.Printf("Turning ON %s", possibleDevice.mqqtSubject)
-			possibleDevice.setPlugStatus("on", natsConn)
-			return nil
-		} else {
-			log.Print(err)
-			return err
+			if err == nil {
+				logrus.Infof("Turning ON %s", possibleDevice.mqqtSubject)
+				possibleDevice.setPlugStatus("on", natsConn)
+			} else {
+				logrus.Error(err)
+			}
 		}
 	}
+
+}
+
+func getDrainableCandidate() *BatteryPoweredDevice {
+	var candidate *BatteryPoweredDevice
+	for _, can := range battDeviceMap {
+		if can.IsAcPowered && can.IsCharging && candidate == nil {
+			candidate = can
+		} else if can.IsAcPowered && can.IsCharging && can.BatteryLevel > candidate.BatteryLevel {
+			candidate = can
+		}
+	}
+	return candidate
+}
+
+func getChargingCandidate() *BatteryPoweredDevice {
+	var candidate *BatteryPoweredDevice
+	for _, can := range battDeviceMap {
+		if can.IsAcPowered && !can.IsCharging && candidate == nil {
+			candidate = can
+		} else if can.IsAcPowered && !can.IsCharging && can.BatteryLevel < candidate.BatteryLevel {
+			candidate = can
+		}
+	}
+	return candidate
 }
 
 func getPowerOffCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
@@ -140,8 +183,6 @@ func getPowerOffCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
 	var priority float32 = -1
 
 	for _, deviceInfo := range plugDeviceMap {
-		log.Printf("PlugID %s", deviceInfo.mqqtSubject)
-
 		if deviceInfo.pluggedDevice != nil && deviceInfo.enabled && deviceInfo.pluggedDevice.BatteryLevel > deviceInfo.pluggedDevice.MaintainLevel {
 			calcPrio := float32(deviceInfo.priority) / float32(deviceInfo.actionCounter)
 			if deviceInfo.pluggedDevice.IsLaptop {
