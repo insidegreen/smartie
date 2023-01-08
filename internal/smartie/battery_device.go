@@ -10,15 +10,13 @@ import (
 )
 
 type BatteryPoweredDevice struct {
-	NodeName      string `json:"nodeName"`
-	BatteryLevel  int    `json:"batteryLevel"`
-	IsAcPowered   bool   `json:"isAcPowered"`
-	IsCharging    bool   `json:"isCharging"`
-	IsLaptop      bool   `json:"isLaptop"`
-	MaintainLevel int    `json:"maintainLevel"`
-	// MinMaintainLevel   int    `json:"minMaintainLevel"`
-	// MaxMaintainLevel   int    `json:"maxMaintainLevel"`
-	SmartChargeEnabled bool `json:"smartChargeEnabled"`
+	NodeName           string `json:"nodeName"`
+	BatteryLevel       int    `json:"batteryLevel"`
+	IsAcPowered        bool   `json:"isAcPowered"`
+	IsCharging         bool   `json:"isCharging"`
+	IsLaptop           bool   `json:"isLaptop"`
+	MaintainLevel      int    `json:"maintainLevel"`
+	SmartChargeEnabled bool   `json:"smartChargeEnabled"`
 }
 
 var battDeviceMap map[string]*BatteryPoweredDevice = make(map[string]*BatteryPoweredDevice)
