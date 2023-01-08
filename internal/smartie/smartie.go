@@ -85,7 +85,9 @@ func detectPlugLaptopRelation() {
 			lastLaptop = laptop
 		}
 
-		if math.Abs(float64(lastPlugedEvent-lastLaptopAcEvent)) <= 1000*10 {
+		eventDiff := math.Abs(float64(lastPlugedEvent - lastLaptopAcEvent))
+
+		if eventDiff <= 1000*10 {
 
 			for _, pdi := range plugDeviceMap {
 				if pdi.pluggedDevice != nil && pdi.pluggedDevice.NodeName == lastLaptop.NodeName {
@@ -157,6 +159,9 @@ func balance() {
 func getDrainableCandidate() *BatteryPoweredDevice {
 	var candidate *BatteryPoweredDevice
 	for _, can := range battDeviceMap {
+		if !can.SmartChargeEnabled || can.BatteryLevel < can.MaintainLevel {
+			continue
+		}
 		if can.IsAcPowered && can.IsCharging && candidate == nil {
 			candidate = can
 		} else if can.IsAcPowered && can.IsCharging && can.BatteryLevel > candidate.BatteryLevel {
@@ -169,6 +174,9 @@ func getDrainableCandidate() *BatteryPoweredDevice {
 func getChargingCandidate() *BatteryPoweredDevice {
 	var candidate *BatteryPoweredDevice
 	for _, can := range battDeviceMap {
+		if !can.SmartChargeEnabled {
+			continue
+		}
 		if can.IsAcPowered && !can.IsCharging && candidate == nil {
 			candidate = can
 		} else if can.IsAcPowered && !can.IsCharging && can.BatteryLevel < candidate.BatteryLevel {
@@ -183,10 +191,18 @@ func getPowerOffCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
 	var priority float32 = -1
 
 	for _, deviceInfo := range plugDeviceMap {
-		if deviceInfo.pluggedDevice != nil && deviceInfo.enabled && deviceInfo.pluggedDevice.BatteryLevel > deviceInfo.pluggedDevice.MaintainLevel {
+		pd := deviceInfo.pluggedDevice
+
+		if pd == nil || !pd.SmartChargeEnabled {
+			continue
+		}
+
+		// if the connected device has less battery than MaintainLevel, we need power on the plug
+		if deviceInfo.enabled && pd.BatteryLevel > pd.MaintainLevel {
+
 			calcPrio := float32(deviceInfo.priority) / float32(deviceInfo.actionCounter)
-			if deviceInfo.pluggedDevice.IsLaptop {
-				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryLevel) / 100)
+			if pd.IsLaptop {
+				calcPrio = calcPrio / (float32(pd.BatteryLevel) / 100)
 			}
 			if priority == -1 || calcPrio < float32(priority) {
 				priority = calcPrio
@@ -197,7 +213,7 @@ func getPowerOffCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
 	}
 
 	if device == nil {
-		return nil, errors.New("no candidate found")
+		return nil, errors.New("no power-off candidate found")
 	}
 
 	return device, nil
@@ -209,9 +225,10 @@ func getPowerOnCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
 
 	for _, deviceInfo := range plugDeviceMap {
 
-		if !deviceInfo.enabled {
+		if !deviceInfo.enabled && deviceInfo.pluggedDevice != nil {
+
 			calcPrio := float32(deviceInfo.priority) / float32(deviceInfo.actionCounter)
-			if deviceInfo.pluggedDevice != nil && deviceInfo.pluggedDevice.IsLaptop {
+			if deviceInfo.pluggedDevice.IsLaptop {
 				calcPrio = calcPrio / (float32(deviceInfo.pluggedDevice.BatteryLevel) / 100)
 			}
 			if calcPrio > float32(priority) {
@@ -223,7 +240,7 @@ func getPowerOnCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
 	}
 
 	if device == nil {
-		return nil, errors.New("No candidate found!")
+		return nil, errors.New("no power-on candidate found")
 	}
 
 	return device, nil

@@ -31,14 +31,12 @@ func NewStatusUpdater(natsConn *nats.Conn) *StatusUpdater {
 	return &StatusUpdater{
 		natsConn: natsConn,
 		DeviceInfo: &smartie.BatteryPoweredDevice{
-			NodeName:         hostname,
-			BatteryLevel:     -1,
-			IsAcPowered:      false,
-			IsLaptop:         true,
-			IsCharging:       false,
-			MaintainLevel:    80,
-			MinMaintainLevel: 20,
-			MaxMaintainLevel: 80,
+			NodeName:      hostname,
+			BatteryLevel:  -1,
+			IsAcPowered:   false,
+			IsLaptop:      true,
+			IsCharging:    false,
+			MaintainLevel: 80,
 		},
 	}
 

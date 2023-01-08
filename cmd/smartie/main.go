@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"os"
+	"smarties/internal/homeassistant"
 	"smarties/internal/smartie"
 	"smarties/internal/util"
 	"strings"
@@ -43,6 +44,7 @@ func init() {
 func main() {
 
 	go smartie.Operate(natsConn)
+	go homeassistant.Operate(natsConn)
 
 	http.Handle("/metrics", promhttp.Handler())
 	http.ListenAndServe(":2112", nil)

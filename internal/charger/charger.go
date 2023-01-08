@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"smarties/internal/smartie"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -56,7 +57,7 @@ func Operate(deviceInfo *smartie.BatteryPoweredDevice, nc *nats.Conn) {
 
 	subject = fmt.Sprintf("smartie.laptop.%s.smart-charge", deviceInfo.NodeName)
 	nc.Subscribe(subject, func(msg *nats.Msg) {
-		switch string(msg.Data) {
+		switch strings.ToLower(string(msg.Data)) {
 		case "on":
 			deviceInfo.SmartChargeEnabled = true
 		case "off":
@@ -91,15 +92,30 @@ func chargeBattery(deviceInfo *smartie.BatteryPoweredDevice) error {
 func setBatteryStatus(deviceInfo *smartie.BatteryPoweredDevice, chargeFlag string) (string, error) {
 
 	if deviceInfo.IsCharging && chargeFlag == chargeBatteryOn {
-		return "ok", nil
+		return "ign", nil
 	}
 	if !deviceInfo.IsCharging && chargeFlag == chargeBatteryOff {
-		return "ok", nil
+		return "ign", nil
+	}
+
+	battStat, err := getBatteryStatus()
+
+	if err != nil {
+		logrus.Errorf("could not get battery status via smc - %s", err.Error())
+		return "nok", err
 	}
 
 	if chargeFlag == chargeBatteryOn {
+		if battStat == 0 {
+			logrus.Info("battery is already charging")
+			return "ign", nil
+		}
 		logrus.Info("charging battery")
 	} else {
+		if battStat == 3 {
+			logrus.Info("battery charging is already disabled")
+			return "ign", nil
+		}
 		logrus.Info("disable battery charging")
 	}
 
@@ -114,4 +130,25 @@ func setBatteryStatus(deviceInfo *smartie.BatteryPoweredDevice, chargeFlag strin
 
 	}
 	return "ok", nil
+}
+
+func getBatteryStatus() (int, error) {
+
+	smc := exec.Command("/usr/local/bin/smc", "-k", "CH0B", "-r")
+	out, err := smc.CombinedOutput()
+
+	if err != nil {
+		logrus.Errorf("smc CH0B returned an error %s", err)
+	} else {
+		logrus.Info(string(out))
+	}
+
+	result := string(out)
+	index := strings.Index(result, "(bytes ")
+
+	if index+9 > len(result) {
+		return -1, fmt.Errorf("got an invalid result from smc: %s", result)
+	}
+
+	return strconv.Atoi(result[index+7 : index+9])
 }
