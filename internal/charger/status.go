@@ -38,7 +38,7 @@ func NewStatusUpdater(natsConn *nats.Conn) *StatusUpdater {
 
 	var kv nats.KeyValue
 
-	if stream, error := js.StreamInfo("KV_smartie." + hostname); stream == nil {
+	if stream, error := js.StreamInfo("KV_smartie_" + hostname); stream == nil {
 		if error != nil {
 			logrus.Printf("could not get KV Bucket: %s", error.Error())
 		}

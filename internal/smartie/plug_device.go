@@ -77,6 +77,21 @@ func updatePlugDevice(m *nats.Msg) {
 
 }
 
+func setPlugStatus(msg *nats.Msg) {
+	sub := strings.Split(msg.Subject, ".")
+
+	for _, v := range battDeviceMap {
+		if v.NodeName == sub[2] {
+			for _, p := range plugDeviceMap {
+				if p.pluggedDevice == v {
+					p.setPlugStatus(strings.ToLower(string(msg.Data)), natsConn)
+					return
+				}
+			}
+		}
+	}
+}
+
 func (deviceInfo *PlugDeviceInfo) setPlugStatus(status string, nats NatsInterface) error {
 
 	if (deviceInfo.enabled && status == "on") || (!deviceInfo.enabled && status == "off") {

@@ -41,6 +41,7 @@ func Operate(nc *nats.Conn) {
 		ConstLabels: prometheus.Labels{"device": "tasmota"},
 	})
 
+	nc.Subscribe("smartie.laptop.*.plug", setPlugStatus)
 	nc.Subscribe("smartie.laptop.*.status", updateBatteryPoweredDevice)
 	nc.Subscribe("shellies.plug.*.*.relay.>", updatePlugDevice)
 

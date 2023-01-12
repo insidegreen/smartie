@@ -74,19 +74,16 @@ func chargeBattery(deviceInfo *smartie.BatteryPoweredDevice) error {
 	ticker := time.NewTicker(time.Second * 30)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			logrus.Infof("Current battery status is %d - charge lvl is %d ", deviceInfo.BatteryLevel, deviceInfo.MaintainLevel)
-			if deviceInfo.BatteryLevel >= deviceInfo.MaintainLevel {
-				setBatteryStatus(deviceInfo, chargeBatteryOff)
-			} else if !deviceInfo.SmartChargeEnabled {
-				setBatteryStatus(deviceInfo, chargeBatteryOn)
-			}
-
+	for range ticker.C {
+		logrus.Infof("Current battery status is %d - charge lvl is %d ", deviceInfo.BatteryLevel, deviceInfo.MaintainLevel)
+		if !deviceInfo.SmartChargeEnabled && deviceInfo.BatteryLevel >= deviceInfo.MaintainLevel {
+			setBatteryStatus(deviceInfo, chargeBatteryOff)
+		} else if deviceInfo.BatteryLevel < deviceInfo.MaintainLevel {
+			setBatteryStatus(deviceInfo, chargeBatteryOn)
 		}
 	}
 
+	return nil
 }
 
 func setBatteryStatus(deviceInfo *smartie.BatteryPoweredDevice, chargeFlag string) (string, error) {
