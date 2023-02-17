@@ -2,6 +2,7 @@ package smartie
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -59,7 +60,7 @@ func updateBatteryPoweredDevice(m *nats.Msg) {
 	// }
 }
 
-func (device *BatteryPoweredDevice) setBatteryChargeStatus(status string, nats NatsInterface) {
+func (device *BatteryPoweredDevice) setBatteryChargeStatus(status string, nats NatsInterface) error {
 	subject := fmt.Sprintf("smartie.laptop.%s.charge", device.NodeName)
 	msg, err := nats.Request(subject, []byte(status), time.Second*5)
 
@@ -67,9 +68,14 @@ func (device *BatteryPoweredDevice) setBatteryChargeStatus(status string, nats N
 		device.IsCharging = status == "on"
 	} else if err != nil {
 		logrus.Errorf("Could not get a response on subject %s - %s", subject, err.Error())
+		return err
 	} else if string(msg.Data) != "ok" {
-		logrus.Errorf("Could not get a posititve response on subject %s:  %s", subject, string(msg.Data))
+		msg := fmt.Sprintf("Could not get a posititve response on subject %s:  %s", subject, string(msg.Data))
+		logrus.Errorf(msg)
+		return errors.New(msg)
 	}
+
+	return nil
 }
 
 // func (device *BatteryPoweredDevice) setBatteryMaintainLevel(level int, nats NatsInterface) {

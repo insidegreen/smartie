@@ -69,3 +69,10 @@ brew install battery
 brew services start smartie 
 
 open battery.app
+
+Create release 
+
+- create release in GitHub
+- brew create 
+- https://github.com/insidegreen/smartie/archive/refs/tags/v0.4.0.tar.gz
+- copy sha to homebrew-smartie repo

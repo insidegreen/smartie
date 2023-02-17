@@ -6,16 +6,18 @@ import (
 	"smarties/internal/smartie"
 
 	"github.com/nats-io/nats.go"
+	"github.com/sirupsen/logrus"
 )
 
 // https://www.home-assistant.io/integrations/mqtt/#discovery-payload
 type autoDiscovery struct {
-	SensorName   string `json:"name"`
-	SensorId     string `json:"unique_id"`
-	DeviceClass  string `json:"device_class"`
-	StateTopic   string `json:"state_topic"`
-	CommandTopic string `json:"command_topic"`
-	Device       device `json:"device"`
+	SensorName    string `json:"name"`
+	SensorId      string `json:"unique_id"`
+	DeviceClass   string `json:"device_class"`
+	StateTopic    string `json:"state_topic"`
+	CommandTopic  string `json:"command_topic"`
+	ValueTemplate string `json:"value_template"`
+	Device        device `json:"device"`
 }
 
 type device struct {
@@ -40,9 +42,9 @@ func haHandler(m *nats.Msg) {
 func sendStateMessage(smartieDevice *smartie.BatteryPoweredDevice) {
 
 	subj := fmt.Sprintf("smartie.laptop.%s.state", smartieDevice.NodeName)
-	msg := "ON"
+	msg := "on"
 	if !smartieDevice.IsAcPowered {
-		msg = "OFF"
+		msg = "off"
 	}
 
 	natsConn.Publish(subj, []byte(msg))
@@ -50,7 +52,7 @@ func sendStateMessage(smartieDevice *smartie.BatteryPoweredDevice) {
 
 func sendAutoDiscoverMessage(smartieDevice *smartie.BatteryPoweredDevice) {
 
-	ad := autoDiscovery{
+	adSW := autoDiscovery{
 		SensorName:   "power switch",
 		SensorId:     "power_switch_" + smartieDevice.NodeName,
 		DeviceClass:  "switch",
@@ -63,9 +65,34 @@ func sendAutoDiscoverMessage(smartieDevice *smartie.BatteryPoweredDevice) {
 	}
 
 	subj := fmt.Sprintf("homeassistant.switch.%s.config", smartieDevice.NodeName)
-	msg, err := json.Marshal(ad)
+	msg, err := json.Marshal(adSW)
 
 	if err == nil {
 		natsConn.Publish(subj, msg)
+	} else {
+		logrus.Error(err)
 	}
+
+	adML := autoDiscovery{
+		SensorName:    "maintain level",
+		SensorId:      "maintain_level_" + smartieDevice.NodeName,
+		DeviceClass:   "battery",
+		StateTopic:    "smartie/laptop/" + smartieDevice.NodeName + "/status",
+		CommandTopic:  "smartie/laptop/" + smartieDevice.NodeName + "/maintain",
+		ValueTemplate: "{{value_json.maintainLevel}}",
+		Device: device{
+			Name:        smartieDevice.NodeName,
+			Identifiers: []string{smartieDevice.NodeName},
+		},
+	}
+
+	subj = fmt.Sprintf("homeassistant.number.%s.config", smartieDevice.NodeName)
+	msg, err = json.Marshal(adML)
+
+	if err == nil {
+		natsConn.Publish(subj, msg)
+	} else {
+		logrus.Error(err)
+	}
+
 }

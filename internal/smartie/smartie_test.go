@@ -31,10 +31,11 @@ var device1 *PlugDeviceInfo = &PlugDeviceInfo{
 	priority:      1,
 	actionCounter: 1,
 	pluggedDevice: &BatteryPoweredDevice{
-		NodeName:     "device1laptop",
-		BatteryLevel: 21,
-		IsAcPowered:  false,
-		IsLaptop:     true,
+		NodeName:           "device1laptop",
+		BatteryLevel:       21,
+		IsAcPowered:        false,
+		IsLaptop:           true,
+		SmartChargeEnabled: true,
 	},
 }
 
@@ -45,10 +46,11 @@ var device2 *PlugDeviceInfo = &PlugDeviceInfo{
 	priority:      1,
 	actionCounter: 1,
 	pluggedDevice: &BatteryPoweredDevice{
-		NodeName:     "device2laptop",
-		BatteryLevel: 20,
-		IsAcPowered:  false,
-		IsLaptop:     true,
+		NodeName:           "device2laptop",
+		BatteryLevel:       20,
+		IsAcPowered:        false,
+		IsLaptop:           true,
+		SmartChargeEnabled: true,
 	},
 }
 
@@ -121,5 +123,39 @@ func TestPowerOnOneEnabledPlugs(t *testing.T) {
 
 	if candidate != device1 {
 		t.Errorf("expected device1 ... got %v", candidate)
+	}
+}
+
+func TestGetDrainableCandidate(t *testing.T) {
+
+	battDeviceMap["device1"] = device1.pluggedDevice
+	battDeviceMap["device2"] = device2.pluggedDevice
+	device1.pluggedDevice.IsCharging = true
+	device1.pluggedDevice.IsAcPowered = true
+	device2.pluggedDevice.IsCharging = true
+	device2.pluggedDevice.IsAcPowered = true
+	device2.pluggedDevice.BatteryLevel = 100
+
+	devices := getDrainableCandidate()
+
+	if devices[0] != device2.pluggedDevice {
+		t.Error("expected device 2 as first drainable device")
+	}
+}
+
+func TestGetChargingCandidate(t *testing.T) {
+
+	battDeviceMap["device1"] = device1.pluggedDevice
+	battDeviceMap["device2"] = device2.pluggedDevice
+	device1.pluggedDevice.IsCharging = false
+	device1.pluggedDevice.IsAcPowered = true
+	device2.pluggedDevice.IsCharging = false
+	device2.pluggedDevice.IsAcPowered = true
+	device2.pluggedDevice.BatteryLevel = 100
+
+	devices := getChargingCandidate()
+
+	if devices[0] != device1.pluggedDevice {
+		t.Error("expected device 1 as first drainable device")
 	}
 }

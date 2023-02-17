@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"smarties/internal/util"
+	"sort"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -112,16 +113,18 @@ func detectPlugLaptopRelation() {
 
 func balance() {
 
+mainLoop:
 	for overalWatt := range powerEvent {
 
 		if overalWatt > 0 {
 			logrus.Infof("We're getting power from the grid(%f)\n", overalWatt)
 
-			drainableDevice := getDrainableCandidate()
+			drainableDevices := getDrainableCandidate()
 
-			if drainableDevice != nil {
-				drainableDevice.setBatteryChargeStatus("off", natsConn)
-				continue
+			for _, dd := range drainableDevices {
+				if dd.setBatteryChargeStatus("off", natsConn) == nil {
+					continue mainLoop
+				}
 			}
 
 			possibleDevice, err := getPowerOffCandidate(overalWatt)
@@ -139,11 +142,14 @@ func balance() {
 		} else {
 			logrus.Infof("We're spending power to the grid(%f)\n", overalWatt)
 
-			chargeableDevice := getChargingCandidate()
-			if chargeableDevice != nil {
-				chargeableDevice.setBatteryChargeStatus("on", natsConn)
-				continue
+			chargeableDevices := getChargingCandidate()
+
+			for _, dd := range chargeableDevices {
+				if dd.setBatteryChargeStatus("on", natsConn) == nil {
+					continue mainLoop
+				}
 			}
+
 			possibleDevice, err := getPowerOnCandidate(overalWatt)
 
 			if err == nil {
@@ -157,34 +163,41 @@ func balance() {
 
 }
 
-func getDrainableCandidate() *BatteryPoweredDevice {
-	var candidate *BatteryPoweredDevice
+func getDrainableCandidate() []*BatteryPoweredDevice {
+
+	var candidates []*BatteryPoweredDevice
+
 	for _, can := range battDeviceMap {
 		if !can.SmartChargeEnabled || can.BatteryLevel < can.MaintainLevel {
 			continue
 		}
-		if can.IsAcPowered && can.IsCharging && candidate == nil {
-			candidate = can
-		} else if can.IsAcPowered && can.IsCharging && can.BatteryLevel > candidate.BatteryLevel {
-			candidate = can
+		if can.IsAcPowered && can.IsCharging {
+			candidates = append(candidates, can)
 		}
 	}
-	return candidate
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].BatteryLevel > candidates[j].BatteryLevel
+	})
+	return candidates
 }
 
-func getChargingCandidate() *BatteryPoweredDevice {
-	var candidate *BatteryPoweredDevice
+func getChargingCandidate() []*BatteryPoweredDevice {
+	var candidates []*BatteryPoweredDevice
+
 	for _, can := range battDeviceMap {
 		if !can.SmartChargeEnabled {
 			continue
 		}
-		if can.IsAcPowered && !can.IsCharging && candidate == nil {
-			candidate = can
-		} else if can.IsAcPowered && !can.IsCharging && can.BatteryLevel < candidate.BatteryLevel {
-			candidate = can
+		if can.IsAcPowered && !can.IsCharging {
+			candidates = append(candidates, can)
 		}
 	}
-	return candidate
+
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].BatteryLevel < candidates[j].BatteryLevel
+	})
+	return candidates
 }
 
 func getPowerOffCandidate(overallWatt float64) (*PlugDeviceInfo, error) {
