@@ -1,0 +1,21 @@
+input:
+  label: "air"
+  nats:
+    urls:
+      - nats://192.168.86.33
+    subject: "smartie.laptop.air.status"
+pipeline:
+  processors:
+    - mapping: |
+        root.name = "air2"
+        root.unique_id = "air2"
+        root.device_class = "battery"
+        root.state_topic = "smartie/laptop/air/state"
+        root.device.identifiers = ["air"]
+        root.device.name = "MacBook Air"
+output:
+  nats:
+    urls:
+      - nats://192.168.86.33
+    subject: "homeassistant.binary_sensor.air2.config"
+
