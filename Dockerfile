@@ -1,6 +1,7 @@
 FROM golang:1.21 AS builder
 
-RUN go mod download
+COPY . /go/src/smartie
+WORKDIR /go/src/smartie
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/smartie cmd/smartie/main.go
 
