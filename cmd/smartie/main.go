@@ -18,7 +18,7 @@ var natsConn *nats.Conn
 
 func init() {
 
-	nc, err := nats.Connect("192.168.86.33")
+	nc, err := nats.Connect("nats")
 
 	util.Fatal(err)
 
