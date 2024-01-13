@@ -1,0 +1,21 @@
+version: '3.3'
+
+services:
+      
+  smartie:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartie
+    restart: always
+    links:
+      - nats
+    ports:
+      - "2112:2112"
+
+  nats:
+    image: nats:latest
+    container_name: nats
+    restart: always
+    ports:
+      - "4222:4222"
