@@ -2,6 +2,59 @@ version: '3.3'
 
 services:
       
+  init_prometheus:
+    image: prom/prometheus:v2.37.7
+    user: root
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        chown -R 65534:65534 /prometheus
+    volumes:
+      - /volume3/container/smartie2/prometheus/data/prometheus:/prometheus
+      
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    restart: always
+    links:
+      - alertmanager
+      - node-exporter
+      - nats
+      - smartie
+    ports:
+      - "9090:9090"
+    volumes:
+      - /volume3/container/smartie2/prometheus/configs/prometheus.yml:/etc/prometheus/prometheus.yml
+      - /volume3/container/smartie2/prometheus/data/prometheus:/prometheus
+      - /volume3/container/smartie2/prometheus/file_sd:/etc/prometheus/file_sd
+
+  alertmanager:
+    image: prom/alertmanager
+    container_name: alertmanager
+    restart: always
+    ports:
+      - "9093:9093"
+    volumes:
+      - /volume3/container/smartie2/prometheus/data/alertmanager:/alertmanager
+
+  node-exporter:
+    privileged: true
+    image: prom/node-exporter
+    container_name: node-exporter
+    restart: always
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.ignored-mount-points"
+      - "^/(rootfs/)?(dev|etc|host|proc|run|sys|volume1)($$|/)"
+
   smartie:
     build: 
       context: .
@@ -16,6 +69,12 @@ services:
   nats:
     image: nats:latest
     container_name: nats
+    command:
+      - -c
+      - /etc/nats/server.conf
+    volumes:
+      - /volume3/container/smartie2/nats/server.conf:/etc/nats/server.conf
     restart: always
     ports:
       - "4222:4222"
+      - "1883:1883"
