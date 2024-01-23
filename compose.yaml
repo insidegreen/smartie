@@ -34,20 +34,20 @@ services:
       dockerfile: Dockerfile
     container_name: smartie
     restart: always
-    # links:
-    #   - nats
+    links:
+      - nats
     ports:
       - "2112:2112"
 
-  # nats:
-  #   image: nats:latest
-  #   container_name: nats
-  #   command:
-  #     - -c
-  #     - /etc/nats/server.conf
-  #   volumes:
-  #     - /volume3/container/smartie/nats/server.conf:/etc/nats/server.conf
-  #   restart: always
-  #   ports:
-  #     - "4222:4222"
-  #     - "1883:1883"
+  nats:
+    image: nats:latest
+    container_name: nats
+    command:
+      - -c
+      - /etc/nats/server.conf
+    volumes:
+      - /mnt/data/supervisor/addons:/etc/nats
+    restart: always
+    ports:
+      - "4222:4222"
+      - "1883:1883"
