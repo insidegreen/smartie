@@ -46,7 +46,8 @@ services:
       - -c
       - /etc/nats/server.conf
     volumes:
-      - /mnt/data/supervisor/addons:/etc/nats
+      - /mnt/data/supervisor/addons/nats:/var/lib/nats
+      - /mnt/data/supervisor/addon_configs/nats/server.conf:/etc/nats/server.conf
     restart: always
     ports:
       - "4222:4222"
