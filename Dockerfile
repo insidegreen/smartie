@@ -3,7 +3,7 @@ FROM golang:1.21 AS builder
 COPY . /go/src/smartie
 WORKDIR /go/src/smartie
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/smartie cmd/smartie/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/smartie cmd/smartie/main.go
 
 FROM alpine:latest as certs
 RUN apk --no-cache add ca-certificates
