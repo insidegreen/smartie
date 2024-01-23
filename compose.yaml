@@ -34,8 +34,8 @@ services:
       dockerfile: Dockerfile
     container_name: smartie
     restart: always
-    links:
-      - nats
+    # links:
+    #   - nats
     ports:
       - "2112:2112"
 
