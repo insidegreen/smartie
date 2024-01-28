@@ -13,19 +13,19 @@ services:
   #   volumes:
   #     - /volume3/container/smartie2/prometheus/data/prometheus:/prometheus
       
-  # prometheus:
-  #   image: prom/prometheus
-  #   container_name: prometheus
-  #   restart: always
-  #   links:
-  #     - nats
-  #     - smartie
-  #   ports:
-  #     - "9090:9090"
-  #   volumes:
-  #     - /volume3/container/smartie2/prometheus/configs/prometheus.yml:/etc/prometheus/prometheus.yml
-  #     - /volume3/container/smartie2/prometheus/data/prometheus:/prometheus
-  #     - /volume3/container/smartie2/prometheus/file_sd:/etc/prometheus/file_sd
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    restart: always
+    links:
+      - nats
+      - smartie
+    ports:
+      - "9090:9090"
+    volumes:
+      - /mnt/data/supervisor/addon_configs/prometheus/configs/prometheus.yml:/etc/prometheus/prometheus.yml
+      - /mnt/data/supervisor/addons/prometheus/data/prometheus:/prometheus
+      - /mnt/data/supervisor/addon_configs/prometheus/file_sd:/etc/prometheus/file_sd
 
 
   smartie:
