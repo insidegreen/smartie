@@ -2,16 +2,16 @@ version: '3.3'
 
 services:
       
-  # init_prometheus:
-  #   image: prom/prometheus:v2.37.7
-  #   user: root
-  #   entrypoint:
-  #     - /bin/sh
-  #     - -c
-  #     - |
-  #       chown -R 65534:65534 /prometheus
-  #   volumes:
-  #     - /volume3/container/smartie2/prometheus/data/prometheus:/prometheus
+  init_prometheus:
+    image: prom/prometheus:v2.37.7
+    user: root
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        chown -R 65534:65534 /prometheus
+    volumes:
+      - /mnt/data/supervisor/addons/prometheus/data/prometheus:/prometheus
       
   prometheus:
     image: prom/prometheus
